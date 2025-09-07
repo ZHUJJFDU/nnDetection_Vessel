@@ -1,0 +1,36 @@
+defaults:
+    - _self_  # 基础配置继承
+    - train: v004 # 训练配置版本（优化版本）
+    - prep: process  # 预处理配置版本
+
+exp:
+  tag: ""  # 实验标识后缀
+  fold: 0  # 交叉验证的折数
+  id: ${module}_${plan}${exp.tag}  # 自动生成的实验ID
+vessel:
+     dir: /home/zjc/nnDetection/det_data/Task103_vesspe/preprocessed/D3V001_3d/vesselsTr  # 血管分割数据目录
+
+train:
+  mode: "resume" # 训练模式：覆盖(overwrite)或继续(resume)
+  val_test: True # 是否在验证数据上运行测试
+
+host:
+  # 请勿修改此处 ↓↓↓
+  parent_data: ${oc.env:det_data}  # 原始数据根目录
+  parent_results: ${oc.env:det_models}  # 模型输出根目录
+
+  # 基础路径配置 ↓↓↓
+  data_dir: ${host.parent_data}/${task}  # 任务数据目录
+  prep_dir: ${host.parent_data}/${task}  # 预处理目录
+  network_training_output_dir: ${host.parent_results} # 模型训练输出目录（历史保留）
+  
+
+  # 预处理中间目录 ↓↓↓
+  raw_output_dir: ${host.prep_dir}/raw  # 原始数据存储
+  splitted_4d_output_dir: ${host.prep_dir}/raw_splitted  # 4D分割数据
+  cropped_output_dir: ${host.prep_dir}/raw_cropped  # 裁剪后数据
+  # 预处理最终目录（建议使用SSD存储） ↓↓↓
+  preprocessed_output_dir: ${host.parent_data}/${task}/preprocessed
+
+  # 训练计划文件路径 ↓↓↓
+  plan_path: ${host.preprocessed_output_dir}/${plan}.pkl  # 自动生成的计划文件路径

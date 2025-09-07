@@ -1,0 +1,115 @@
+# @package __global__
+defaults:
+  - augmentation: base_more  # 默认使用base_more数据增强策略
+
+module: RetinaUNetV004  # 使用的网络模块（血管引导注意力版本）
+predictor: BoxPredictorSelective  # 使用的预测器
+
+plan: D3V001_3d  # 用于训练的计划
+planner: D3V001  # 用于预处理的计划器
+
+augment_cfg:  # 数据增强配置
+  augmentation: ${augmentation}  # 引用上面定义的augmentation配置
+  num_train_batches_per_epoch: ${trainer_cfg.num_train_batches_per_epoch}  # 每轮训练批次数，引用自trainer_cfg
+  num_val_batches_per_epoch: ${trainer_cfg.num_val_batches_per_epoch}  # 每轮验证批次数，引用自trainer_cfg
+
+  dataloader: "DataLoader{}DOffset"  # 数据加载器类名
+  oversample_foreground_percent: 0.5  # 批次中前景和背景的比例
+  dataloader_kwargs: {}  # 数据加载器的额外参数
+
+  # 优化数据加载性能
+  num_threads: ${oc.env:det_num_threads, "12"}  # 增加数据加载线程数
+  num_cached_per_thread: 2  # 增加每个线程缓存的数据数量
+  multiprocessing: True  # 是否使用多进程，调试时可以关闭
+
+  # 批次大小覆盖（增加batch size以提高GPU利用率）
+  batch_size: 8  # 将batch size从4增加到8，充分利用24GB显存
+
+trainer_cfg:  # 训练器配置
+  gpus: 1  # 使用的GPU数量
+  accelerator:  # 分布式后端，为空表示不使用
+  precision: 16  # 混合精度训练设置
+  amp_backend: native  # 混合精度后端
+  amp_level: O1  # 当使用APEX作为混合精度后端时使用O1级别
+  
+  # 性能优化设置
+  deterministic: False  # 非确定性训练，允许使用cudnn.benchmark
+  benchmark: True  # 启用cudnn基准测试，可提升高达20%性能
+
+  monitor_key: "mAP_IoU_0.10_0.50_0.05_MaxDet_100"  # 用于确定最佳模型的指标
+  monitor_mode: "max"  # 指标操作模式，"min"或"max"
+
+  max_num_epochs: 50  # 最大训练轮数
+  num_train_batches_per_epoch: 2000  # 减少每轮训练批次数，因为batch size增加了
+  num_val_batches_per_epoch: 80  # 相应减少验证批次数
+
+  # 优化学习率设置
+  initial_lr: 0.02  # 由于batch size增加，相应提高学习率
+  sgd_momentum: 0.9  # 动量项
+  sgd_nesterov: True  # 是否使用Nesterov动量
+  weight_decay: 3.e-5  # 优化器的权重衰减
+
+  warm_iterations: 3000  # 预热迭代次数
+  warm_lr: 1.e-6  # 预热起始学习率
+
+  poly_gamma: 0.9  # 多项式学习率衰减的gamma参数
+
+  swa_epochs: 10  # 使用循环学习率进行随机权重平均的轮数
+
+model_cfg:  # 模型配置
+  encoder_kwargs: {}  # 传递给编码器的关键字参数
+  decoder_kwargs:  # 传递给解码器的关键字参数
+    min_out_channels: 8  # 最小输出通道数
+    upsampling_mode: "transpose"  # 上采样模式
+
+    num_lateral: 1  # 侧面连接的卷积层数
+    norm_lateral: False  # 侧面连接是否使用归一化
+    activation_lateral: False  # 侧面连接是否使用激活函数
+
+    num_out: 1  # 输出连接的卷积层数
+    norm_out: False  # 输出连接是否使用归一化
+    activation_out: False  # 输出连接是否使用激活函数
+
+  head_kwargs: {}  # 传递给头部的关键字参数
+
+  head_classifier_kwargs:  # 传递给头部分类器的关键字参数
+    num_convs: 1  # 卷积层数
+    norm_channels_per_group: 16  # 每组归一化通道数
+    norm_affine: True  # 是否使用仿射变换
+    reduction: "mean"  # 损失缩减方式
+    loss_weight: 1.  # 损失权重
+    prior_prob: 0.01  # 先验概率
+
+  head_regressor_kwargs:  # 传递给头部回归器的关键字参数
+    num_convs: 1  # 卷积层数
+    norm_channels_per_group: 16  # 每组归一化通道数
+    norm_affine: True  # 是否使用仿射变换
+    reduction: "sum"  # 损失缩减方式
+    loss_weight: 1.  # 损失权重
+    learn_scale: True  # 是否学习缩放
+
+  head_sampler_kwargs:  # 传递给采样器的关键字参数
+    batch_size_per_image: 48  # 增加每图像采样锚框数（从32增加到48）
+    positive_fraction: 0.33  # 正负锚框比例
+    pool_size: 20  # 负样本池大小
+    min_neg: 1  # 每图像最小负样本数
+
+  segmenter_kwargs:  # 分割器参数
+    dice_kwargs:  # Dice损失参数
+      batch_dice: True  # 是否使用批次级Dice
+
+  matcher_kwargs:  # 传递给匹配器的关键字参数
+    num_candidates: 4  # 候选数量
+    center_in_gt: False  # 中心点是否需要在真实框内
+
+  # 血管引导注意力参数
+  vessel_attention_kwargs:  # 传递给血管引导注意力模块的参数
+    enable: True  # 是否启用血管引导注意力
+    fusion_mode: "concatenation"  # 融合模式: concatenation, addition, multiplication
+    attention_channels: 8  # 注意力通道数
+    use_sigmoid: True  # 是否使用sigmoid激活函数
+    spatial_scale: 1.0  # 空间缩放因子
+
+  plan_arch_overwrites: 
+    batch_size: 8  # 覆盖计划文件中的batch size
+  plan_anchors_overwrites: {}  # 锚框参数覆盖 

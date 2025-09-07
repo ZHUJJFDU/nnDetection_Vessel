@@ -1,0 +1,109 @@
+# @package __global__
+defaults:
+  - augmentation: base_more  # 默认使用base_more数据增强策略
+
+module: RetinaUNetV003CBAMnew  # 使用的网络模块
+predictor: BoxPredictorSelective  # 使用的预测器
+
+plan: D3V001_3d  # 用于训练的计划
+planner: D3V001  # 用于预处理的计划器
+
+augment_cfg:  # 数据增强配置
+  augmentation: ${augmentation}  # 引用上面定义的augmentation配置
+  num_train_batches_per_epoch: ${trainer_cfg.num_train_batches_per_epoch}  # 每轮训练批次数，引用自trainer_cfg
+  num_val_batches_per_epoch: ${trainer_cfg.num_val_batches_per_epoch}  # 每轮验证批次数，引用自trainer_cfg
+
+  dataloader: "DataLoader{}DOffset"  # 数据加载器类名
+  oversample_foreground_percent: 0.5  # 批次中前景和背景的比例
+  dataloader_kwargs: {}  # 数据加载器的额外参数
+
+  num_threads: ${oc.env:det_num_threads, "12"}  # 数据加载线程数，从环境变量获取，默认为12
+  num_cached_per_thread: 2  # 每个线程缓存的数据数量
+  multiprocessing: True  # 是否使用多进程，调试时可以关闭
+
+  # 附加覆盖选项
+  # patch_size; 默认使用plan中的设置
+  # batch_size; 默认使用plan中的设置
+  # splits; 默认使用splits_final
+
+trainer_cfg:  # 训练器配置
+  gpus: 1  # 使用的GPU数量
+  accelerator:  # 分布式后端，为空表示不使用
+  precision: 16  # 混合精度训练设置
+  amp_backend: native  # 混合精度后端
+  amp_level: O1  # 当使用APEX作为混合精度后端时使用O1级别
+  # 默认情况下训练是确定性的，非确定性允许使用cudnn.benchmark，
+  # 可以提高高达20%的性能。设置为false进行非确定性训练
+  deterministic: False  # 是否使用确定性训练
+  benchmark: False  # 是否启用cudnn基准测试
+
+  monitor_key: "mAP_IoU_0.10_0.50_0.05_MaxDet_100"  # 用于确定最佳模型的指标
+  monitor_mode: "max"  # 指标操作模式，"min"或"max"
+
+  max_num_epochs: 50  # 最大训练轮数
+  num_train_batches_per_epoch: 2500  # 每轮训练批次数
+  num_val_batches_per_epoch: 100  # 每轮验证批次数
+
+  initial_lr: 0.01  # 初始学习率
+  sgd_momentum: 0.9  # 动量项
+  sgd_nesterov: True  # 是否使用Nesterov动量
+  weight_decay: 3.e-5  # 优化器的权重衰减
+
+  warm_iterations: 4000  # 预热迭代次数
+  warm_lr: 1.e-6  # 预热起始学习率
+
+  poly_gamma: 0.9  # 多项式学习率衰减的gamma参数
+
+  swa_epochs: 10  # 使用循环学习率进行随机权重平均的轮数
+  # sweep_ckpt: 用于扫描的检查点标识符。默认为"last"
+
+model_cfg:  # 模型配置
+  encoder_kwargs: {}  # 传递给编码器的关键字参数
+  decoder_kwargs:  # 传递给解码器的关键字参数
+    min_out_channels: 8  # 最小输出通道数
+    upsampling_mode: "transpose"  # 上采样模式
+
+    num_lateral: 1  # 侧面连接的卷积层数
+    norm_lateral: False  # 侧面连接是否使用归一化
+    activation_lateral: False  # 侧面连接是否使用激活函数
+
+    num_out: 1  # 输出连接的卷积层数
+    norm_out: False  # 输出连接是否使用归一化
+    activation_out: False  # 输出连接是否使用激活函数
+
+  head_kwargs: {}  # 传递给头部的关键字参数
+
+  head_classifier_kwargs:  # 传递给头部分类器的关键字参数
+    num_convs: 1  # 卷积层数
+    norm_channels_per_group: 16  # 每组归一化通道数
+    norm_affine: True  # 是否使用仿射变换
+    reduction: "mean"  # 损失缩减方式
+    loss_weight: 1.  # 损失权重
+    prior_prob: 0.01  # 先验概率
+
+  head_regressor_kwargs:  # 传递给头部回归器的关键字参数
+    num_convs: 1  # 卷积层数
+    norm_channels_per_group: 16  # 每组归一化通道数
+    norm_affine: True  # 是否使用仿射变换
+    reduction: "sum"  # 损失缩减方式
+    loss_weight: 1.  # 损失权重
+    learn_scale: True  # 是否学习缩放
+
+  head_sampler_kwargs:  # 传递给采样器的关键字参数
+    batch_size_per_image: 32  # 每图像采样锚框数
+    positive_fraction: 0.33  # 正负锚框比例
+    # 硬负样本从以下大小的池中采样:
+    # batch_size_per_image * (1 - positive_fraction) * pool_size
+    pool_size: 20  # 负样本池大小
+    min_neg: 1  # 每图像最小负样本数
+
+  segmenter_kwargs:  # 分割器参数
+    dice_kwargs:  # Dice损失参数
+      batch_dice: True  # 是否使用批次级Dice
+
+  matcher_kwargs:  # 传递给匹配器的关键字参数
+    num_candidates: 4  # 候选数量
+    center_in_gt: False  # 中心点是否需要在真实框内
+
+  plan_arch_overwrites: {}  # 架构参数覆盖
+  plan_anchors_overwrites: {}  # 锚框参数覆盖
