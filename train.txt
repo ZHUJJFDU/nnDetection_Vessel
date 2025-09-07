@@ -1,0 +1,31 @@
+conda activate zjc
+
+nndet_prep 101 -np 12 -npp 12 --full_check
+
+(nndet_vesselprep 101)
+
+nndet_unpack /home/zjc/nnDetection/det_data/Task101_Full/preprocessed/D3V001_3d/imagesTr 6
+
+(nndet_vesselunpack /home/zjc/nnDetection/det_data/Task101_Full/preprocessed/D3V001_3d/vesselsTr 6)
+
+OMP_NUM_THREADS=1 det_num_threads=10 CUDA_VISIBLE_DEVICES=0 nndet_train 101 --sweep
+
+nndet_train 101 -o exp.fold=1,2..4 --sweep
+
+nndet_train Task102_vesspe -o module=RetinaUNetV004 train=v004 +vessel.dir=/home/zjc/nnDetection/det_data/Task102_vesspe/preprocessed/D3V001_3d/vesselsTr
+
+nndet_sweep 101 RetinaUNetV001_D3V001_3d 0
+
+nndet_eval 101 RetinaUNetV001_D3V001_3d 0 --boxes --analyze_boxes
+
+(nndet_consolidate Task102_Test RetinaUNetV001_D3V001_3d --sweep_boxes --num_folds 4)
+
+nndet_predict 101 RetinaUNetV001_D3V001_3d --fold -1
+
+unset LD_LIBRARY_PATH
+
+import matplotlib
+matplotlib.use('Agg') 
+
+nndet_boxes2nii 101 RetinaUNetV001_D3V001_3d --test=true --threshold=0.5
+
